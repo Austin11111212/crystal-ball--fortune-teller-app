@@ -1,72 +1,137 @@
-$(document).ready(function() {
+$(document).ready(function () {
     // Get today's date
     const today = new Date().toDateString();
-    
+
     // Retrieve last visit date and click count from localStorage
     const lastVisitDate = localStorage.getItem('lastVisitDate');
-    const clickCount = localStorage.getItem('clickCount');
+    let clickCount = parseInt(localStorage.getItem('clickCount') || 0);
 
-    // If last visit date is not today's date, reset click count
+    console.log("Last visit date:", lastVisitDate); // Debugging
+    console.log("Today's date:", today); // Debugging
+    console.log("Click count:", clickCount); // Debugging
+
+    // Reset click count if it's a new day
     if (lastVisitDate !== today) {
-        localStorage.setItem('clickCount', 0); // Reset the click count
-        localStorage.setItem('lastVisitDate', today); // Store today's date
+        resetClickCount(today);
     }
 
-    // If click count is 3 or more, disable the button and show a message
-    if (clickCount >= 3) {
-        disableButton();
+    // If the user has already reached the limit, disable the button
+    if (clickCount >= 6) {
+        displayLimitReachedMessage();
+    }
+
+    // Handle the fortune button click
+    $('#fortune-btn').click(function () {
+        if ($(this).prop('disabled')) return;
+
+        playClickSound();
+
+        // Fetch a fortune from the backend
+        fetchFortune();
+
+        // Increment click count and update localStorage
+        clickCount++;
+        localStorage.setItem('clickCount', clickCount);
+
+        console.log("Click count after increment:", clickCount); // Debugging
+
+        // Disable the button if the limit is reached
+        if (clickCount >= 6) {
+            displayLimitReachedMessage();
+        }
+    });
+
+    // Listen for device motion (shake detection)
+    setupShakeDetection();
+
+    // Stop audio on page unload
+    $(window).on('beforeunload', stopAudio);
+
+    // FUNCTIONS
+
+    // Reset the click count and store the current date
+    function resetClickCount(date) {
+        localStorage.setItem('clickCount', 0);
+        localStorage.setItem('lastVisitDate', date);
+        clickCount = 0;
+        console.log("Click count reset for a new day."); // Debugging
+    }
+
+    // Disable the button and show the limit-reached message
+    function displayLimitReachedMessage() {
+        $('#fortune-btn').prop('disabled', true).css({
+            cursor: 'not-allowed',
+            opacity: 0.5,
+        }).off('click'); // Remove click handler
         $('#fortune-text').text('You have reached the maximum number of fortunes for today. Come back tomorrow!');
     }
 
-    // Handle the click event on the fortune button
-    $('#fortune-btn').click(function() {
-        // If button is disabled, return early
-        if ($(this).prop('disabled')) {
-            return;
+    // Play the button click sound
+    function playClickSound() {
+        const audio = document.getElementById("click-sound");
+        if (audio) {
+            audio.currentTime = 0; // Restart the audio
+            audio.play();
+        } else {
+            console.error("Audio element not found!");
         }
-
-        // Play the sound when the image is clicked, always start fresh
-        var audio = document.getElementById("click-sound");
-
-        // Reset audio and start from the beginning each time it's clicked
-        audio.currentTime = 0; // Restart the audio to the beginning
-        audio.play();
-
-        // Fetch the fortune from the backend API
-        $.get('http://localhost:3000/fortune', function(data) {
-            // Display the fortune on the page
-            $('#fortune-text').text(data.fortune);
-        }).fail(function() {
-            // Handle errors if the API request fails
-            $('#fortune-text').text("Oops! Something went wrong.");
-        });
-
-        // Increment the click count
-        let newClickCount = parseInt(localStorage.getItem('clickCount') || 0);
-        newClickCount++;
-        localStorage.setItem('clickCount', newClickCount); // Store the new click count
-
-        // Disable the button if the user clicks 3 times
-        if (newClickCount >= 3) {
-            disableButton();
-            $('#fortune-text').text('You have reached the maximum number of fortunes for today. Come back tomorrow!');
-        }
-    });
-
-    // Function to disable the button and prevent any further clicks
-    function disableButton() {
-        $('#fortune-btn').prop('disabled', true).css({
-            'cursor': 'not-allowed', // Make the button look disabled
-            'opacity': 0.5
-        }).off('click');  // Remove click event handler to prevent further clicks
     }
 
-    // Stop the music when the user is about to leave the page
-    $(window).on('beforeunload', function() {
-        var audio = document.getElementById("click-sound");
-        if (!audio.paused) {
-            audio.pause();  // Pause the audio
-            audio.currentTime = 0;  // Reset the audio to the start
+    // Fetch a fortune from the backend
+    function fetchFortune() {
+        $.get('http://localhost:3000/fortune')
+            .done(function (data) {
+                $('#fortune-text').text(data.fortune);
+            })
+            .fail(function () {
+                $('#fortune-text').text("Oops! Something went wrong. Please try again later.");
+            });
+    }
+
+    // Stop audio playback on page unload
+    function stopAudio() {
+        const audio = document.getElementById("click-sound");
+        if (audio && !audio.paused) {
+            audio.pause();
+            audio.currentTime = 0;
         }
-    });
+    }
+
+    // Set up shake detection
+    function setupShakeDetection() {
+        let lastX, lastY, lastZ, lastTime = 0;
+        const shakeThreshold = 15; // Sensitivity
+
+        if (window.DeviceMotionEvent) {
+            window.addEventListener('devicemotion', function (event) {
+                const currentTime = new Date().getTime();
+                if (currentTime - lastTime > 100) {
+                    const diffTime = currentTime - lastTime;
+                    lastTime = currentTime;
+
+                    const x = event.acceleration.x || 0;
+                    const y = event.acceleration.y || 0;
+                    const z = event.acceleration.z || 0;
+
+                    const acceleration = Math.abs(x + y + z - lastX - lastY - lastZ) / diffTime * 10000;
+
+                    if (acceleration > shakeThreshold) {
+                        triggerShakeEffect();
+                    }
+
+                    lastX = x;
+                    lastY = y;
+                    lastZ = z;
+                }
+            }, false);
+        }
+    }
+
+    // Add a shaking effect to the button
+    function triggerShakeEffect() {
+        $('#fortune-btn').addClass('shake');
+        setTimeout(() => {
+            $('#fortune-btn').removeClass('shake');
+        }, 500);
+    }
 });
